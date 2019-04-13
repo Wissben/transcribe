@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% block content %}
+
+    <main>
+        <p>HINT : refresh to get a new example.</p>
+
+        <p>
+            <button id="btnStart">START RECORDING</button>
+            <br/>
+            <button id="btnStop">STOP RECORDING</button>
+            <br>
+            <button id="confirm">CONFIRM ?</button>
+            <div id="done"></div>
+        </p>
+
+        <audio controls hidden muted="muted"></audio>
+
+        <!-- could save to canvas and do image manipulation and saving too -->
+    </main>
+    <script>
+        let constraintObj = {
+            audio: true,
+            video: false
+        };
+
+        navigator.mediaDevices.getUserMedia(constraintObj).then(mediaStreamObj => {
+            let audio = document.querySelector('audio');
+            if ('srcObject' in audio) {
+                audio.srcObject = mediaStreamObj;
+            }
+            else {
+                audio.src = window.URL.createObjectURL(mediaStreamObj);
+            }
+            audio.onloadedmetadata = (ev) => {
+                audio.play();
+            };
+
+            let start = document.getElementById('btnStart');
+            let stop = document.getElementById('btnStop');
+            let confirm = document.getElementById('confirm');
+            let done = document.getElementById('done');
+            let mediaRecorder = new MediaRecorder(mediaStreamObj)
+            console.debug(mediaStreamObj);
+            let chunks = [];
+            let CONNECTION_PORT = 'http://localhost:5000';
+            record_stopped = false;
+            let init_data ={
+                'utterance':'',
+                'file_id':''
+            };
+            let socket = io.connect(CONNECTION_PORT);
+            console.log('CONNECTED WITH :', socket)
+            socket.on('recieve', function (msg) {
+                init_data.utterance = msg.utterance
+                init_data.file_id=msg.id
+                $('#data').html(init_data.utterance)
+            });
+
+            start.addEventListener("click", (ev) => {
+                chunks = [];
+                mediaRecorder.start(1000);
+                console.log('STARTED RECORDING with state : ', mediaRecorder.state);
+            });
+
+            stop.addEventListener("click", (ev) => {
+                record_stopped = true;
+                mediaRecorder.stop();
+                console.log('STOPPED RECORDING with state : ', mediaRecorder.state);
+
+            });
+
+            confirm.addEventListener("click",(ev) => {
+                if(record_stopped === true)
+                {
+                    blob = new Blob(chunks, {'type': 'audio/wav;codecs=0'});
+                    socket.emit('trans', {
+                        'utterance':init_data.utterance,
+                        'bytes': chunks
+                    });
+                    $('#done').html('Done !');
+                    chunks = [];
+                    record_stopped = false;
+                }
+            });
+            mediaRecorder.ondataavailable = (ev) => {
+                console.log("CURRENT DATA : ", ev.data)
+                {#socket.emit('json', ev.data);#}
+                chunks.push(ev.data);
+            };
+
+            mediaRecorder.onstop = (ev) => {
+                console.log('FULL STOP');
+            }
+
+        }).catch((err) => {
+            console.log(err.name, err.message);
+        })
+    </script>
+    <div id="data"></div>
+{% endblock %}
